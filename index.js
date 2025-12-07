@@ -47,6 +47,6 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`Stripe webhook proxy running on port ${PORT}`);
-  console.log(`Webhook URL: https://your-domain.com/webhook`);
+  console.log(`Webhook URL: https://your-service.onrender.com/`);
 });
 
