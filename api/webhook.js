@@ -9,7 +9,19 @@ const SUPABASE_WEBHOOK_URL = process.env.SUPABASE_WEBHOOK_URL || 'https://tdaphl
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 export default async function handler(req, res) {
-  // Only allow POST requests
+  // Handle GET requests for keep-alive
+  if (req.method === 'GET') {
+    if (req.url === '/ping' || req.url === '/keepalive' || req.url === '/health') {
+      return res.status(200).json({ 
+        status: 'ok', 
+        message: 'Server is awake',
+        timestamp: new Date().toISOString() 
+      });
+    }
+    return res.status(404).json({ error: 'Not found' });
+  }
+  
+  // Only allow POST requests for webhook
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
