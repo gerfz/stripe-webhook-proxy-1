@@ -1,6 +1,10 @@
 # Stripe Webhook Proxy
 
-This proxy server sits between Stripe and your Supabase Edge Function, adding the required `apikey` header that Supabase needs for authentication.
+This proxy server sits between Stripe and your Supabase Edge Functions, adding the required `apikey` header that Supabase needs for authentication.
+
+**Supports TWO Stripe accounts:**
+- **Original Stripe** → `/webhook` → `stripe-webhook` Edge Function
+- **Subscription Stripe** → `/subscription-webhook` → `stripe-subscription-webhook` Edge Function
 
 ## Setup on Render
 
@@ -47,18 +51,27 @@ All return: `{ status: 'ok', message: 'Server is awake', timestamp: '...' }`
 
 ## Stripe Webhook Configuration
 
-In your Stripe Dashboard:
+### Original Stripe Account (Customer Payments)
+In your **Original** Stripe Dashboard:
 1. Go to Webhooks → Add endpoint
-2. Use your Render service URL: `https://your-service.onrender.com/webhook`
-3. Select events: `checkout.session.completed` and `payment_intent.succeeded`
+2. Use: `https://your-service.onrender.com/webhook`
+3. Select events: `payment_intent.succeeded`
 4. Save the webhook
 
-The proxy will forward all webhooks to your Supabase Edge Function with the required authentication headers.
+### Subscription Stripe Account (Contractor Top-Ups)
+In your **Subscription** Stripe Dashboard:
+1. Go to Webhooks → Add endpoint
+2. Use: `https://your-service.onrender.com/subscription-webhook`
+3. Select events: `checkout.session.completed`
+4. Save the webhook
+
+The proxy will forward all webhooks to the appropriate Supabase Edge Function with the required authentication headers.
 
 ## Environment Variables
 
 - `PORT` - Server port (usually set automatically by hosting service)
 - `SUPABASE_ANON_KEY` - Your Supabase anonymous key (required)
-- `SUPABASE_WEBHOOK_URL` - Supabase webhook function URL (optional, has default)
+- `SUPABASE_WEBHOOK_URL` - Original Stripe webhook function URL (optional, has default)
+- `SUPABASE_SUBSCRIPTION_WEBHOOK_URL` - Subscription Stripe webhook function URL (optional, has default)
 - `ENABLE_KEEPALIVE` - Set to `false` to disable self-ping (default: enabled)
 - `KEEPALIVE_URL` - Custom URL for self-ping (default: `http://localhost:${PORT}`)

@@ -2,25 +2,40 @@ const express = require('express');
 const app = express();
 
 // Your Supabase anon key (needed to authenticate with Edge Function)
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkYXBobGl3dHlxZmZod3V4dGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MTA4ODYsImV4cCI6MjA3OTI4Njg4Nn0.0G05mSpgnECZuWPK63J9kHUVlcy3LaI8fwM8TJpAxIM';
-const SUPABASE_EDGE_FUNCTION_URL = 'https://tdaphliwtyqffhwuxtfx.supabase.co/functions/v1/stripe-webhook';
+// Use environment variable in production, fallback to hardcoded for development
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkYXBobGl3dHlxZmZod3V4dGZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM3MTA4ODYsImV4cCI6MjA3OTI4Njg4Nn0.0G05mSpgnECZuWPK63J9kHUVlcy3LaI8fwM8TJpAxIM';
+
+// Edge Function URLs
+const SUPABASE_BASE_URL = 'https://tdaphliwtyqffhwuxtfx.supabase.co/functions/v1';
+const STRIPE_WEBHOOK_URL = process.env.SUPABASE_WEBHOOK_URL || `${SUPABASE_BASE_URL}/stripe-webhook`;
+const STRIPE_SUBSCRIPTION_WEBHOOK_URL = process.env.SUPABASE_SUBSCRIPTION_WEBHOOK_URL || `${SUPABASE_BASE_URL}/stripe-subscription-webhook`;
 
 // Middleware to parse raw body (required for Stripe signature verification)
 app.use(express.raw({ type: 'application/json' }));
 
-// Proxy endpoint
-app.post('/', async (req, res) => {
+// Generic proxy handler
+const proxyWebhook = (targetUrl, webhookName) => async (req, res) => {
   try {
-    console.log('Proxying webhook to Supabase Edge Function');
+    // Check if SUPABASE_ANON_KEY is set
+    if (!SUPABASE_ANON_KEY) {
+      console.error('ERROR: SUPABASE_ANON_KEY is not set! Set it as an environment variable.');
+      return res.status(500).json({ 
+        error: 'Server configuration error', 
+        message: 'SUPABASE_ANON_KEY environment variable is not set' 
+      });
+    }
+    
+    console.log(`[${webhookName}] Proxying webhook to Supabase Edge Function`);
+    console.log(`[${webhookName}] Target URL:`, targetUrl);
     
     // Forward the request to Supabase Edge Function with apikey header
-    const response = await fetch(SUPABASE_EDGE_FUNCTION_URL, {
+    const response = await fetch(targetUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'apikey': SUPABASE_ANON_KEY,
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-        // Forward all Stripe headers
+        // Forward Stripe signature header (required for webhook verification)
         'stripe-signature': req.headers['stripe-signature'] || '',
       },
       body: req.body,
@@ -28,16 +43,23 @@ app.post('/', async (req, res) => {
 
     const responseText = await response.text();
     
-    console.log('Supabase response status:', response.status);
-    console.log('Supabase response:', responseText);
+    console.log(`[${webhookName}] Supabase response status:`, response.status);
+    console.log(`[${webhookName}] Supabase response:`, responseText.substring(0, 200));
 
     // Forward the response
     res.status(response.status).send(responseText);
   } catch (error) {
-    console.error('Proxy error:', error);
+    console.error(`[${webhookName}] Proxy error:`, error);
     res.status(500).json({ error: 'Proxy error', details: error.message });
   }
-});
+};
+
+// Route 1: Original Stripe webhook (customer payments)
+app.post('/', proxyWebhook(STRIPE_WEBHOOK_URL, 'stripe-webhook'));
+app.post('/webhook', proxyWebhook(STRIPE_WEBHOOK_URL, 'stripe-webhook'));
+
+// Route 2: Subscription Stripe webhook (contractor marketing top-ups)
+app.post('/subscription-webhook', proxyWebhook(STRIPE_SUBSCRIPTION_WEBHOOK_URL, 'stripe-subscription-webhook'));
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -66,9 +88,14 @@ app.get('/keepalive', (req, res) => {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Stripe webhook proxy running on port ${PORT}`);
-  console.log(`Webhook URL: https://your-service.onrender.com/`);
-  console.log(`Keep-alive endpoint: https://your-service.onrender.com/ping`);
+  console.log(`\n=== Stripe Webhook Proxy Running ===`);
+  console.log(`Port: ${PORT}`);
+  console.log(`\nWebhook Endpoints:`);
+  console.log(`  - Original Stripe:      https://your-service.onrender.com/webhook`);
+  console.log(`  - Subscription Stripe:  https://your-service.onrender.com/subscription-webhook`);
+  console.log(`\nHealth Endpoints:`);
+  console.log(`  - Health check: https://your-service.onrender.com/health`);
+  console.log(`  - Keep-alive:   https://your-service.onrender.com/ping`);
   
   // Self-ping every 10 minutes to keep server awake (if running on free tier)
   // This prevents the server from spinning down due to inactivity
